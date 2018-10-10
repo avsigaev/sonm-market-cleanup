@@ -52,7 +52,7 @@ def get_orders_for_bad_suppliers(supplier):  # get ASK orders for unavailable su
 def open_deal(order):  # quick-buy orders and close deals immediately; use threads
     print("Trying to buy order " + order)
     status = SONM_CLI.exec(["deal", "quick-buy", order, "--force", "--timeout=30s"])
-    deal = None
+    deal = "0"
     if status[0] == 0:
         print("[WTF] Expected timeout error, received deal ID: " + str(status[1]["deal"]["id"]))
 
@@ -62,29 +62,26 @@ def open_deal(order):  # quick-buy orders and close deals immediately; use threa
         print("Deal for order " + order + " is " + deal)
     elif order_status[0] == 0:
         print("Could not open deal for order " + order)
-        DEALS.append(None)
     elif order_status[0] == 1:
         print("Could not get status for order " + order)
-        DEALS.append(None)
 
-    if deal:
-        close_deal(deal)
+    close_deal(deal)
 
     return()
 
 
 def close_deal(deal):
     print("Closing deal: " + deal + "...")
-    status = SONM_CLI.exec(["deal", "close", deal], retry=True)
-    if status[0] == 0:
-        print("Deal " + deal + " closed.")
-    else:
-        print("ERROR while closing deal: " + deal)
+    if deal != "0":
+        status = SONM_CLI.exec(["deal", "close", deal], retry=True)
+        if status[0] == 0:
+            print("Deal " + deal + " closed.")
+        else:
+            print("ERROR while closing deal: " + deal)
     DEALS.append(deal)
 
 
 def calc_expanses():
-    # TODO
     total_spendings_ = 0.0
     for deal in DEALS:
         status = SONM_CLI.exec(["deal", "status", deal], retry=True)
