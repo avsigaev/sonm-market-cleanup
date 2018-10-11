@@ -5,7 +5,7 @@ import subprocess
 import json
 import time
 
-from cli import set_sonmcli, Cli, log
+from cli import set_sonmcli, Cli
 
 
 def get_orders():
