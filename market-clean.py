@@ -15,28 +15,31 @@ def get_orders():
     suppliers_raw_ = []
     for i in orders_["orders"]:
         suppliers_raw_.append(i["order"]["authorID"])
-    # log("List of suppliers on the market (with active orders):")
-    suppliers = list(set(suppliers_raw_))
-    # for s in suppliers:
-    #     print(s)
+
+    workers_addrs = list(set(suppliers_raw_))
+
+    workers_count = len(workers_addrs)
+
     print("Total active ASK orders: " + str(len(orders_["orders"])))
-    print("Total suppliers: " + str(len(suppliers)))
+    print("Total suppliers: " + str(workers_count))
 
-    return suppliers
+    return workers_count, workers_addrs
 
 
-def check_supplier(address):  # check if supplier is available; if not - add to the list for cleanup
+def check_worker(address):  # check if supplier is available; if not - add to the list for cleanup
     worker_address_ = "--worker-address=" + address
     status = SONM_CLI.exec(["worker", "status", worker_address_, "--timeout=1m"])
     if status[0] == 0:
         print("[OK] Worker " + address + " is a good boy, passing by.")
     elif str(status[1]["message"]).find("Unauthenticated") > 0:
         print("[OK] Worker " + address + " is a good boy (BUT has older SONM version), passing by.")
-    elif str(status[1]["message"]).find("DeadlineExceeded") > 0:
+    elif str(status[1]["message"]).find("DeadlineExceeded") > 0 \
+            or str(status[1]["message"]).find("context deadline exceeded") > 0:
         print("[GOTCHA] Worker " + address + " is offline, adding to the list for order removal")
-        BAD_SUPPLIERS.append(address)
+        DEAD_WORKERS.append(address)
     elif status[0] == 1:
         print("[ERR] Unknown error: " + str(status[1]["message"]))
+    INTERVIEWED_WORKERS.append(address)
     return()
 
 
@@ -71,8 +74,8 @@ def open_deal(order):  # quick-buy orders and close deals immediately; use threa
 
 
 def close_deal(deal):
-    print("Closing deal: " + deal + "...")
     if deal != "0":
+        print("Closing deal: " + deal + "...")
         status = SONM_CLI.exec(["deal", "close", deal], retry=True)
         if status[0] == 0:
             print("Deal " + deal + " closed.")
@@ -95,8 +98,10 @@ def calc_expanses():
 def main():
     global SONM_CLI
     SONM_CLI = Cli(set_sonmcli())
-    global BAD_SUPPLIERS
-    BAD_SUPPLIERS = []
+    global INTERVIEWED_WORKERS
+    INTERVIEWED_WORKERS = []
+    global DEAD_WORKERS
+    DEAD_WORKERS = []
     global CURL
     CURL = "curl -s https://dwh.livenet.sonm.com:15022/DWHServer/GetOrders/ -d"
     global ORDERS_FOR_REMOVAL
@@ -104,20 +109,23 @@ def main():
     global DEALS
     DEALS = []
 
-    suppliers = get_orders()
+    workers_count, workers_addrs = get_orders()
 
     print("========= Checking worker status ==========")
-    for address in suppliers:
-        threading.Thread(target=check_supplier, kwargs={'address': address}).start()
+    for address in workers_addrs:
+        threading.Thread(target=check_worker, kwargs={'address': address}).start()
         time.sleep(1)
-    time.sleep(80)
 
-    print("=========== Bad guys (" + str(len(BAD_SUPPLIERS)) + ") are: ===========")
-    for i in BAD_SUPPLIERS:
+    # waiting for all workers to be interviewed
+    while len(INTERVIEWED_WORKERS) < workers_count:
+        time.sleep(1)
+
+    print("=========== Bad guys (" + str(len(DEAD_WORKERS)) + ") are: ===========")
+    for i in DEAD_WORKERS:
         print(i)
 
     print("====== Gathering orders for removal ======")
-    for address in BAD_SUPPLIERS:
+    for address in DEAD_WORKERS:
         threading.Thread(target=get_orders_for_bad_suppliers, kwargs={'supplier': address}).start()
     time.sleep(3)
 
