@@ -1,24 +1,19 @@
-import datetime
 import json
 import platform
 import subprocess
 import time
 
-
-def log(s):
-    print(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S") + " " + s)
-
-
-def set_sonmcli():
-    if platform.system() == "Darwin":
-        return "sonmcli_darwin_x86_64"
-    else:
-        return "sonmcli"
+from urllib import request
 
 
 class Cli:
-    def __init__(self, cli_):
-        self.cli = cli_
+    def __init__(self, path=None):
+        if path:
+            self.cli = path
+        elif platform.system() == "Darwin":
+            self.cli = "sonmcli_darwin_x86_64"
+        else:
+            self.cli = "sonmcli"
 
     def exec(self, param, retry=False, attempts=3, sleep_time=1):
         command = [self.cli] + param
@@ -45,3 +40,16 @@ class Cli:
             return code_, json.loads(result.stdout.decode("utf-8"))
         return code_, json.loads(result.stdout.decode("utf-8"))
 
+
+class DWH:
+    def __init__(self, addr='https://dwh.livenet.sonm.com:15022'):
+        self._server = addr
+        self._headers = {'content-type': 'application/json'}
+
+    def get_orders(self, params: dict) -> dict:
+        data = json.dumps(params).encode('utf8')
+        url = self._server + '/DWHServer/GetOrders/'
+        req = request.Request(url, data=data, headers=self._headers)
+
+        with request.urlopen(req) as resp:
+            return json.loads(resp.read())
