@@ -1,34 +1,35 @@
 #!/usr/bin/env python3
 
 import threading
-import subprocess
-import json
 import time
 
-from cli import set_sonmcli, Cli
+import cli as sonm
+
+dwh = sonm.DWH()
+cli = sonm.Cli()
 
 
 def get_orders():
-    cmd_ = CURL + " '{\"type\": 2,\"status\": 2, \"counterpartyID\": [\"0x0000000000000000000000000000000000000000\"]}'"
-    result = subprocess.run(cmd_, shell=True, stdout=subprocess.PIPE)
-    orders_ = json.loads(result.stdout)
-    suppliers_raw_ = []
-    for i in orders_["orders"]:
-        suppliers_raw_.append(i["order"]["authorID"])
+    reply = dwh.get_orders(
+        {"type": 2, "status": 2, "counterpartyID": ["0x0000000000000000000000000000000000000000"], }
+    )
 
-    workers_addrs = list(set(suppliers_raw_))
+    orders = reply.get("orders")
+    suppliers = list()
+    for order in orders:
+        suppliers.append(order.get("order").get("authorID"))
 
+    workers_addrs = list(set(suppliers))
     workers_count = len(workers_addrs)
 
-    print("Total active ASK orders: " + str(len(orders_["orders"])))
-    print("Total workers: " + str(workers_count))
-
+    print("Total active ASK orders: %d" % len(orders))
+    print("Total suppliers: %d" % workers_count)
     return workers_count, workers_addrs
 
 
 def check_worker(address):  # check if supplier is available; if not - add to the list for cleanup
     worker_address_ = "--worker-address=" + address
-    status = SONM_CLI.exec(["worker", "status", worker_address_, "--timeout=1m"])
+    status = cli.exec(["worker", "status", worker_address_, "--timeout=1m"])
     if status[0] == 0:
         print("[OK] Worker " + address + " is a good boy, passing by.")
     elif str(status[1]["message"]).find("Unauthenticated") > 0:
@@ -40,26 +41,23 @@ def check_worker(address):  # check if supplier is available; if not - add to th
     elif status[0] == 1:
         print("[ERR] Unknown error: " + str(status[1]["message"]))
     INTERVIEWED_WORKERS.append(address)
-    return()
+    return ()
 
 
 def get_orders_for_bad_suppliers(supplier):  # get ASK orders for unavailable supplier for clean
-    command_ = CURL + " '{\"type\": 2,\"status\": 2, \"authorID\": \"" + supplier + "\"}'"
-    result = subprocess.run(command_, shell=True, stdout=subprocess.PIPE)
-    orders_ = json.loads(result.stdout)
-    for i in orders_["orders"]:
-        ORDERS_FOR_REMOVAL.append(i["order"]["id"])
-    return None
+    orders = dwh.get_orders({"type": 2, "status": 2, "authorID": supplier})
+    for order in orders.get("orders"):
+        ORDERS_FOR_REMOVAL.append(order.get("order").get('id'))
 
 
 def open_deal(order):  # quick-buy orders and close deals immediately; use threads
     print("Trying to buy order " + order)
-    status = SONM_CLI.exec(["deal", "quick-buy", order, "--force", "--timeout=30s"])
+    status = cli.exec(["deal", "quick-buy", order, "--force", "--timeout=30s"])
     deal = "0"
     if status[0] == 0:
         print("[WTF] Expected timeout error, received deal ID: " + str(status[1]["deal"]["id"]))
 
-    order_status = SONM_CLI.exec(["order", "status", order, "--timeout=30s"], retry=True)
+    order_status = cli.exec(["order", "status", order, "--timeout=30s"], retry=True)
     if order_status[0] == 0 and order_status[1]["dealID"] != "0":
         deal = order_status[1]["dealID"]
         print("Deal for order " + order + " is " + deal)
@@ -70,13 +68,13 @@ def open_deal(order):  # quick-buy orders and close deals immediately; use threa
 
     close_deal(deal)
 
-    return()
+    return ()
 
 
 def close_deal(deal):
     if deal != "0":
         print("Closing deal: " + deal + "...")
-        status = SONM_CLI.exec(["deal", "close", deal], retry=True)
+        status = cli.exec(["deal", "close", deal], retry=True)
         if status[0] == 0:
             print("Deal " + deal + " closed.")
         else:
@@ -87,23 +85,19 @@ def close_deal(deal):
 def calc_expanses():
     total_spendings_ = 0.0
     for deal in DEALS:
-        status = SONM_CLI.exec(["deal", "status", deal], retry=True)
+        status = cli.exec(["deal", "status", deal], retry=True)
         if status[0] == 0:
-            cost = float(status[1]["deal"]["totalPayout"])/1e18
+            cost = float(status[1]["deal"]["totalPayout"]) / 1e18
             print("Deal " + deal + " cost = " + str(cost) + " SNM")
             total_spendings_ += cost
     return total_spendings_
 
 
 def main():
-    global SONM_CLI
-    SONM_CLI = Cli(set_sonmcli())
     global INTERVIEWED_WORKERS
     INTERVIEWED_WORKERS = []
     global DEAD_WORKERS
     DEAD_WORKERS = []
-    global CURL
-    CURL = "curl -s https://dwh.livenet.sonm.com:15022/DWHServer/GetOrders/ -d"
     global ORDERS_FOR_REMOVAL
     ORDERS_FOR_REMOVAL = []
     global DEALS
