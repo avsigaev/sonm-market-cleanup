@@ -21,7 +21,7 @@ def get_orders():
     workers_count = len(workers_addrs)
 
     print("Total active ASK orders: " + str(len(orders_["orders"])))
-    print("Total suppliers: " + str(workers_count))
+    print("Total workers: " + str(workers_count))
 
     return workers_count, workers_addrs
 
@@ -120,16 +120,35 @@ def main():
     while len(INTERVIEWED_WORKERS) < workers_count:
         time.sleep(1)
 
-    print("=========== Bad guys (" + str(len(DEAD_WORKERS)) + ") are: ===========")
-    for i in DEAD_WORKERS:
-        print(i)
+    if len(DEAD_WORKERS) > 0:
+        print("=========== Bad guys (" + str(len(DEAD_WORKERS)) + ") are: ===========")
+        for i in DEAD_WORKERS:
+            print(i)
+    else:
+        print("No dead workers found. Exit")
+        exit(0)
 
     print("====== Gathering orders for removal ======")
     for address in DEAD_WORKERS:
         threading.Thread(target=get_orders_for_bad_suppliers, kwargs={'supplier': address}).start()
     time.sleep(3)
 
-    print("TOTAL Orders for removal: " + str(len(ORDERS_FOR_REMOVAL)))
+    print("TOTAL Orders for removal (" + str(len(ORDERS_FOR_REMOVAL)) + "):")
+
+    orders_ = ""
+    for order in ORDERS_FOR_REMOVAL:
+        orders_ = orders_ + " " + order
+    print(orders_)
+
+    print("\n" + "Ready to remove orders: quick-buy orders from dead workers and close deals.")
+
+    try:
+        input("Press Enter to continue, or Ctrl-C to quit")
+    except SyntaxError:
+        pass
+    except KeyboardInterrupt:
+        print("\n")
+        exit(0)
 
     print("======== Removing orders... ========")
     for order in ORDERS_FOR_REMOVAL:
